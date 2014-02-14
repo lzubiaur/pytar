@@ -35,20 +35,26 @@ excludes = None
 
 def main(argv=None):
     argv = (argv or sys.argv)[1:]
-    parser = argparse.ArgumentParser(usage=("%(prog)s [--exclude|-e excludefile] directory"))
-    parser.add_argument("directory",
+    parser = argparse.ArgumentParser(usage=("%(prog)s [--gpg] [--exclude|-e excludefile] path"))
+
+    parser.add_argument("path",
         type=unicode,
-        help="directory to backup")
+        help="Directory to backup")
 
     parser.add_argument("--exclude","-e",
         dest="exclude",
         type=unicode,
         help="File with the paths to exclude from backup")
 
+    parser.add_argument("--gpg","-g",
+        dest="encrypt",
+        action="store_true",
+        help="Enable gpg symetric encryption")
+
     options, args = parser.parse_known_args(argv)
 
-    if not os.path.isdir(options.directory):
-        parser.error("Directory not found: '{0}'".format(options.directory))
+    if not os.path.isdir(options.path):
+        parser.error("Directory not found: '{0}'".format(options.path))
 
     if options.exclude:
         with open(options.exclude,'r') as f:
@@ -56,33 +62,34 @@ def main(argv=None):
             # Don't use readlines because it keep the newline and pattern will not match
             # excludes = f.readlines()
             excludes = f.read().splitlines()
-
-    if options.directory:
-        backup(options.directory)
-
-def backup(path):
-    basename = os.path.basename(os.path.normpath(path))
-    ext = ".tar.gz"
-    tarball = basename + time.strftime("%Y%m%d") + ext
+    
+    # Figure out the tarball filename from the directory name
+    basename = os.path.basename(os.path.normpath(options.path))
+    tarball = "{0}_{1}.tar.gz".format(basename,time.strftime("%Y%m%d"))
 
     if os.path.isfile(tarball):
-        print "ERROR: Backup file " + tarball + " exits! Abort."
+        print "ERROR: Backup file '{0}' exits! Abort.".format(tarball)
         return
 
-    print "Backup directory " + path + " in tarball " + tarball + " ..."
+    print "Backup directory {0} in tarball {1}...".format(options.path,tarball)
 
+    if options.path:
+        backup(options.path,tarball)
+
+    if options.encrypt:
+        encrypt(tarball)
+
+def backup(path,tarball):
     with tarfile.open(tarball, "w:gz") as tar:
-        if len(excludes) > 0:
-            print 'create tarball with exlude option'
+        if excludes and len(excludes) > 0:
+            print 'Create tarball with exlude option'
             tar.add(path, filter=filter_function)
         else:
             tar.add(path)
 
-    #gpg --symmetric --cipher-algo AES256 filename.tar.gz
-    # call(["gpg","--symmetric","--cipher-algo","AES256",fname])
-
-    # move the backup file to the current directory
-    # shtil.move(tarball,os.getcwd())
+def encrypt(filename):
+    print 'Encrypt tarball using GnuPG'
+    call(['gpg2','--symmetric','--cipher-algo','AES256',filename])
 
 def filter_function(tarinfo):
     for pattern in excludes:
